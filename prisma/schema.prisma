@@ -1,0 +1,279 @@
+// ============================================
+// Prisma Schema — TripSync PostgreSQL Database
+// ============================================
+// Covers: Users, Trips, Members, Destinations,
+//         Transport, Accommodation, Expenses,
+//         Payments, Budget, Itinerary Slots,
+//         Expense Splits, Activity Embeddings
+// ============================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector, pgcrypto]
+}
+
+// ==========================================
+// USER
+// ==========================================
+model User {
+  userId       Int      @id @default(autoincrement()) @map("user_id")
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  phone        String?  @db.VarChar(20)
+  status       String   @default("active") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  createdTrips   Trip[]
+  memberships    TripMember[]
+  expenses       Expense[]
+  payments       Payment[]
+  itinerarySlots ItinerarySlot[]
+  expenseSplits  ExpenseSplit[]
+
+  @@map("users")
+}
+
+// ==========================================
+// TRIP
+// ==========================================
+model Trip {
+  tripId      Int      @id @default(autoincrement()) @map("trip_id")
+  tripName    String   @map("trip_name") @db.VarChar(200)
+  description String?  @db.Text
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  currency    String   @default("INR") @db.Char(3)
+  status      String   @default("planning") @db.VarChar(20)
+  createdBy   Int      @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  creator        User             @relation(fields: [createdBy], references: [userId])
+  members        TripMember[]
+  destinations   Destination[]
+  transports     Transport[]
+  accommodations Accommodation[]
+  expenses       Expense[]
+  budgets        Budget[]
+  itinerarySlots ItinerarySlot[]
+  embeddings     ActivityEmbedding[]
+
+  @@map("trips")
+}
+
+// ==========================================
+// TRIP_MEMBER (Associative Entity)
+// ==========================================
+model TripMember {
+  tripId     Int      @map("trip_id")
+  userId     Int      @map("user_id")
+  memberRole String   @default("member") @map("member_role") @db.VarChar(20)
+  joinedAt   DateTime @default(now()) @map("joined_at")
+  status     String   @default("active") @db.VarChar(20)
+
+  // Relations
+  trip Trip @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [userId])
+
+  @@id([tripId, userId])
+  @@map("trip_members")
+}
+
+// ==========================================
+// DESTINATION
+// ==========================================
+model Destination {
+  destinationId Int      @id @default(autoincrement()) @map("destination_id")
+  tripId        Int      @map("trip_id")
+  name          String   @db.VarChar(200)
+  location      String   @db.VarChar(300)
+  arrivalDate   DateTime @map("arrival_date") @db.Date
+  departureDate DateTime @map("departure_date") @db.Date
+  notes         String?  @db.Text
+
+  // Relations
+  trip                  Trip            @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+  accommodations        Accommodation[]
+  departingTransports   Transport[]     @relation("DepartureDestination")
+  arrivingTransports    Transport[]     @relation("ArrivalDestination")
+  itinerarySlots        ItinerarySlot[]
+
+  @@map("destinations")
+}
+
+// ==========================================
+// TRANSPORT
+// ==========================================
+model Transport {
+  transportId            Int      @id @default(autoincrement()) @map("transport_id")
+  tripId                 Int      @map("trip_id")
+  transportType          String   @map("transport_type") @db.VarChar(50)
+  provider               String   @db.VarChar(200)
+  departureDestinationId Int      @map("departure_destination_id")
+  arrivalDestinationId   Int      @map("arrival_destination_id")
+  departureTime          DateTime @map("departure_time")
+  arrivalTime            DateTime @map("arrival_time")
+  bookingReference       String?  @unique @map("booking_reference") @db.VarChar(100)
+  cost                   Decimal  @default(0) @db.Decimal(12, 2)
+  status                 String   @default("confirmed") @db.VarChar(20)
+
+  // Relations
+  trip                 Trip        @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+  departureDestination Destination @relation("DepartureDestination", fields: [departureDestinationId], references: [destinationId])
+  arrivalDestination   Destination @relation("ArrivalDestination", fields: [arrivalDestinationId], references: [destinationId])
+
+  @@index([tripId, departureTime, arrivalTime])
+  @@map("transports")
+}
+
+// ==========================================
+// ACCOMMODATION
+// ==========================================
+model Accommodation {
+  accommodationId  Int      @id @default(autoincrement()) @map("accommodation_id")
+  tripId           Int      @map("trip_id")
+  destinationId    Int      @map("destination_id")
+  name             String   @db.VarChar(200)
+  address          String?  @db.VarChar(500)
+  checkIn          DateTime @map("check_in")
+  checkOut         DateTime @map("check_out")
+  bookingReference String?  @unique @map("booking_reference") @db.VarChar(100)
+  cost             Decimal  @default(0) @db.Decimal(12, 2)
+  status           String   @default("confirmed") @db.VarChar(20)
+
+  // Relations
+  trip        Trip        @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+  destination Destination @relation(fields: [destinationId], references: [destinationId])
+
+  @@index([tripId, checkIn, checkOut])
+  @@map("accommodations")
+}
+
+// ==========================================
+// EXPENSE
+// ==========================================
+model Expense {
+  expenseId   Int      @id @default(autoincrement()) @map("expense_id")
+  tripId      Int      @map("trip_id")
+  paidBy      Int      @map("paid_by")
+  category    String   @db.VarChar(50)
+  amount      Decimal  @default(0) @db.Decimal(12, 2)
+  description String?  @db.Text
+  expenseDate DateTime @map("expense_date") @db.Date
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  trip     Trip           @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+  payer    User           @relation(fields: [paidBy], references: [userId])
+  payments Payment[]
+  splits   ExpenseSplit[]
+
+  @@map("expenses")
+}
+
+// ==========================================
+// EXPENSE_SPLIT (New — for group expense sharing)
+// ==========================================
+model ExpenseSplit {
+  splitId     Int     @id @default(autoincrement()) @map("split_id")
+  expenseId   Int     @map("expense_id")
+  userId      Int     @map("user_id")
+  shareAmount Decimal @map("share_amount") @db.Decimal(12, 2)
+  isSettled   Boolean @default(false) @map("is_settled")
+
+  // Relations
+  expense Expense @relation(fields: [expenseId], references: [expenseId], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [userId])
+
+  @@unique([expenseId, userId])
+  @@map("expense_splits")
+}
+
+// ==========================================
+// PAYMENT
+// ==========================================
+model Payment {
+  paymentId     Int      @id @default(autoincrement()) @map("payment_id")
+  expenseId     Int      @map("expense_id")
+  paidBy        Int      @map("paid_by")
+  amount        Decimal  @db.Decimal(12, 2)
+  paymentMethod String   @map("payment_method") @db.VarChar(50)
+  transactionId String?  @unique @map("transaction_id") @db.VarChar(100)
+  paidAt        DateTime @default(now()) @map("paid_at")
+  status        String   @default("completed") @db.VarChar(20)
+
+  // Relations
+  expense Expense @relation(fields: [expenseId], references: [expenseId], onDelete: Cascade)
+  payer   User    @relation(fields: [paidBy], references: [userId])
+
+  @@map("payments")
+}
+
+// ==========================================
+// BUDGET
+// ==========================================
+model Budget {
+  budgetId      Int     @id @default(autoincrement()) @map("budget_id")
+  tripId        Int     @map("trip_id")
+  category      String  @db.VarChar(50)
+  plannedAmount Decimal @map("planned_amount") @db.Decimal(12, 2)
+  remarks       String? @db.Text
+
+  // Relations
+  trip Trip @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+
+  @@unique([tripId, category])
+  @@map("budgets")
+}
+
+// ==========================================
+// ITINERARY_SLOT (Bridge to MongoDB)
+// ==========================================
+model ItinerarySlot {
+  slotId        Int      @id @default(autoincrement()) @map("slot_id")
+  tripId        Int      @map("trip_id")
+  destinationId Int?     @map("destination_id")
+  mongoDocId    String   @map("mongo_doc_id") @db.VarChar(24)
+  slotType      String   @map("slot_type") @db.VarChar(30)
+  title         String   @db.VarChar(200)
+  startTime     DateTime @map("start_time")
+  endTime       DateTime @map("end_time")
+  isLocked      Boolean  @default(false) @map("is_locked")
+  createdBy     Int      @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  trip        Trip         @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+  destination Destination? @relation(fields: [destinationId], references: [destinationId])
+  creator     User         @relation(fields: [createdBy], references: [userId])
+
+  @@index([tripId, startTime, endTime])
+  @@map("itinerary_slots")
+}
+
+// ==========================================
+// ACTIVITY_EMBEDDING (pgvector for semantic search)
+// ==========================================
+model ActivityEmbedding {
+  embeddingId Int      @id @default(autoincrement()) @map("embedding_id")
+  mongoDocId  String   @unique @map("mongo_doc_id") @db.VarChar(24)
+  tripId      Int      @map("trip_id")
+  title       String   @db.VarChar(200)
+  embedding   Unsupported("vector(384)")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  trip Trip @relation(fields: [tripId], references: [tripId], onDelete: Cascade)
+
+  @@map("activity_embeddings")
+}
