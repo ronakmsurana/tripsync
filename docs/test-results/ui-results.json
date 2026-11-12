@@ -1,0 +1,82 @@
+[
+  {
+    "name": "landing page renders and no longer links to a hard-coded demo trip",
+    "ok": true
+  },
+  {
+    "name": "protected page redirects anonymous visitors to login",
+    "ok": true
+  },
+  {
+    "name": "registration form validates and creates the account",
+    "ok": true
+  },
+  {
+    "name": "create a trip from the dashboard",
+    "ok": true
+  },
+  {
+    "name": "add a second destination and a transport booking",
+    "ok": true
+  },
+  {
+    "name": "add a stay (check-in/out) through the form",
+    "ok": true
+  },
+  {
+    "name": "an activity that clashes with check-out shows a conflict and a suggested slot",
+    "ok": true
+  },
+  {
+    "name": "budget and expenses are computed from saved data",
+    "ok": true
+  },
+  {
+    "name": "search finds the activity and says which engine answered",
+    "ok": true
+  },
+  {
+    "name": "schedule assistant is clear after the fix",
+    "ok": true
+  },
+  {
+    "name": "everything persists after a full page reload",
+    "ok": true
+  },
+  {
+    "name": "no failed network requests during the journey",
+    "ok": true
+  },
+  {
+    "name": "sign out, sign back in, data still there",
+    "ok": true
+  },
+  {
+    "name": "dashboard search and filters work",
+    "ok": true
+  },
+  {
+    "name": "another user cannot open the first user's trip",
+    "ok": true
+  },
+  {
+    "name": "demo organizer sees timeline, conflict banner and every tab",
+    "ok": true
+  },
+  {
+    "name": "viewer sees a read-only trip (no add/edit controls)",
+    "ok": true
+  },
+  {
+    "name": "admin page shows the three stores and is hidden from normal users",
+    "ok": true
+  },
+  {
+    "name": "architecture page uses the app's light theme",
+    "ok": true
+  },
+  {
+    "name": "mobile layout (390px) has no horizontal overflow",
+    "ok": true
+  }
+]

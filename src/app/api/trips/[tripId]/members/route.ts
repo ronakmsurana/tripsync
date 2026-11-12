@@ -1,124 +1,32 @@
-// ============================================
-// Trip Members API
-// GET  /api/trips/[tripId]/members — List members
-// POST /api/trips/[tripId]/members — Add member
-// ============================================
-
-import { NextRequest, NextResponse } from "next/server";
+// GET/POST /api/trips/[tripId]/members
 import prisma from "@/lib/db/postgres";
-import { withTripRole } from "@/lib/auth/middleware";
+import { ANY_ROLE, ORGANIZER, route } from "@/lib/api/route";
+import { created, ok } from "@/lib/api/response";
+import { conflict, notFound } from "@/lib/api/errors";
 import { addMemberSchema } from "@/lib/utils/validation";
-import { TokenPayload } from "@/lib/auth/jwt";
+import { MemberDTO, TripRole } from "@/types";
 
-// GET — List all members of a trip
-export const GET = withTripRole(
-  ["organizer", "member", "viewer"],
-  async (
-    _request: NextRequest,
-    context: { params: Promise<Record<string, string>> },
-    _user: TokenPayload,
-    _role: string
-  ) => {
-    try {
-      const params = await context.params;
-      const tripId = parseInt(params.tripId);
+async function listMembers(tripId: number): Promise<MemberDTO[]> {
+  const rows = await prisma.tripMember.findMany({
+    where: { tripId, status: "active" },
+    include: { user: { select: { userId: true, name: true, email: true } } },
+    orderBy: [{ joinedAt: "asc" }, { userId: "asc" }],
+  });
+  return rows.map((m) => ({ userId: m.userId, name: m.user.name, email: m.user.email, memberRole: m.memberRole as TripRole, joinedAt: m.joinedAt.toISOString() }));
+}
 
-      const members = await prisma.tripMember.findMany({
-        where: { tripId },
-        include: {
-          user: {
-            select: { userId: true, name: true, email: true, phone: true },
-          },
-        },
-        orderBy: { joinedAt: "asc" },
-      });
+export const GET = route({ trip: ANY_ROLE }, async ({ tripId }) => ok(await listMembers(tripId)));
 
-      return NextResponse.json({ success: true, data: members });
-    } catch (error) {
-      console.error("List members error:", error);
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
-    }
+export const POST = route({ trip: ORGANIZER }, async (ctx) => {
+  const d = await ctx.body(addMemberSchema);
+  const target = await prisma.user.findUnique({ where: { email: d.email }, select: { userId: true, name: true, status: true } });
+  if (!target || target.status !== "active") throw notFound("No active user with that email. They need to create a TripSync account first.");
+  const existing = await prisma.tripMember.findUnique({ where: { tripId_userId: { tripId: ctx.tripId, userId: target.userId } } });
+  if (existing?.status === "active") throw conflict("That person is already on this trip.", undefined, "ALREADY_MEMBER");
+  if (existing) {
+    await prisma.tripMember.update({ where: { tripId_userId: { tripId: ctx.tripId, userId: target.userId } }, data: { status: "active", memberRole: d.memberRole } });
+  } else {
+    await prisma.tripMember.create({ data: { tripId: ctx.tripId, userId: target.userId, memberRole: d.memberRole } });
   }
-);
-
-// POST — Add a member to the trip (organizer only)
-export const POST = withTripRole(
-  ["organizer"],
-  async (
-    request: NextRequest,
-    context: { params: Promise<Record<string, string>> },
-    _user: TokenPayload,
-    _role: string
-  ) => {
-    try {
-      const params = await context.params;
-      const tripId = parseInt(params.tripId);
-      const body = await request.json();
-      const parsed = addMemberSchema.safeParse(body);
-
-      if (!parsed.success) {
-        return NextResponse.json(
-          { error: "Validation failed", details: parsed.error.flatten() },
-          { status: 400 }
-        );
-      }
-
-      // Find the user by email
-      const targetUser = await prisma.user.findUnique({
-        where: { email: parsed.data.email },
-      });
-
-      if (!targetUser) {
-        return NextResponse.json(
-          { error: "No user found with that email. They need to register first." },
-          { status: 404 }
-        );
-      }
-
-      // Check if already a member
-      const existing = await prisma.tripMember.findUnique({
-        where: {
-          tripId_userId: { tripId, userId: targetUser.userId },
-        },
-      });
-
-      if (existing) {
-        return NextResponse.json(
-          { error: "User is already a member of this trip" },
-          { status: 409 }
-        );
-      }
-
-      const member = await prisma.tripMember.create({
-        data: {
-          tripId,
-          userId: targetUser.userId,
-          memberRole: parsed.data.memberRole,
-        },
-        include: {
-          user: {
-            select: { userId: true, name: true, email: true },
-          },
-        },
-      });
-
-      return NextResponse.json(
-        {
-          success: true,
-          data: member,
-          message: `${targetUser.name} added as ${parsed.data.memberRole}`,
-        },
-        { status: 201 }
-      );
-    } catch (error) {
-      console.error("Add member error:", error);
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
-    }
-  }
-);
+  return created(await listMembers(ctx.tripId), `${target.name} added as ${d.memberRole}`);
+});

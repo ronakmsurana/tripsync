@@ -1,0 +1,20 @@
+
+ RUN  v5.0.5 /home/claude/tripsync-main
+
+ ✓  api  tests/api/api.test.ts (45 tests) 10628ms
+   ✓ 1. authentication (7)
+     ✓ login works, wrong password and unknown e-mail give the same 401 1286ms
+     ✓ session cookie is httpOnly + SameSite and the token is not in the body 360ms
+     ✓ private routes need a session; logout ends it; a forged cookie is rejected 372ms
+     ✓ throttles repeated failed logins (429) 3314ms
+   ✓ 4. destinations, transport, accommodation (CRUD + integrity) (5)
+     ✓ destination: edit works; an unused destination can be deleted and activities are only unlinked 472ms
+   ✓ 9. dashboard & admin role (4)
+     ✓ admin sees system overview, can reconcile and can suspend a user (effective immediately) 835ms
+     ✓ reconcile repairs drift: orphan Mongo documents are removed, missing ones recreated 409ms
+
+ Test Files  1 passed (1)
+      Tests  45 passed (45)
+   Start at  15:21:28
+   Duration  11.02s (tests 98%, import 2%)
+

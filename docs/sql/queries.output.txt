@@ -1,0 +1,120 @@
+--- Q1 [JOIN + ORDER BY] Which trips is each person on, and in what role?
+ name  |      trip_name      | member_role 
+-------+---------------------+-------------
+ Arjun | Hampi Heritage Tour | member
+ Ronak | Hampi Heritage Tour | organizer
+ Priya | Hampi Heritage Tour | viewer
+(3 rows)
+
+--- Q2 [multi-table JOIN] Transport legs with their departure and arrival destination names
+ transport_type |   provider    |   from    |    to     |   departure_time    |    arrival_time     |  cost  
+----------------+---------------+-----------+-----------+---------------------+---------------------+--------
+ bus            | KSRTC Airavat | Bangalore | Hampi     | 2026-12-20 22:00:00 | 2026-12-21 05:30:00 | 850.00
+ bus            | KSRTC Airavat | Hospet    | Bangalore | 2026-12-23 22:00:00 | 2026-12-24 05:30:00 | 850.00
+(2 rows)
+
+--- Q3 [GROUP BY + aggregate + HAVING] Expense categories with more than one expense, by total
+   category    | expenses |  total  | average 
+---------------+----------+---------+---------
+ accommodation |        1 | 3200.00 | 3200.00
+ transport     |        1 | 1700.00 | 1700.00
+ food          |        1 |  451.00 |  451.00
+(3 rows)
+
+--- Q4 [subquery in WHERE] Expenses larger than the average expense of the same trip
+ expense_id |   category    | amount  |     description     
+------------+---------------+---------+---------------------
+          2 | accommodation | 3200.00 | Guest house booking
+(1 row)
+
+--- Q5 [NOT EXISTS / correlated subquery] Destinations that have no accommodation booked
+   name    | arrival_date | departure_date 
+-----------+--------------+----------------
+ Bangalore | 2026-12-20   | 2026-12-20
+ Hospet    | 2026-12-23   | 2026-12-24
+(2 rows)
+
+--- Q6 [window function] Running total of spend by date
+ expense_date |   category    | amount  | running_total 
+--------------+---------------+---------+---------------
+ 2026-12-15   | transport     | 1700.00 |       1700.00
+ 2026-12-15   | accommodation | 3200.00 |       4900.00
+ 2026-12-21   | food          |  451.00 |       5351.00
+(3 rows)
+
+--- Q7 [VIEW] Budget vs actual per category (vw_budget_vs_actual)
+   category    | planned |  spent  | remaining | utilization_pct 
+---------------+---------+---------+-----------+-----------------
+ accommodation | 4000.00 | 3200.00 |    800.00 |            80.0
+ activities    | 1500.00 |       0 |   1500.00 |             0.0
+ food          | 3000.00 |  451.00 |   2549.00 |            15.0
+ shopping      | 1000.00 |       0 |   1000.00 |             0.0
+ transport     | 2000.00 | 1700.00 |    300.00 |            85.0
+(5 rows)
+
+--- Q8 [VIEW + LEFT JOINs inside] Who owes what (vw_member_balances)
+ name  | total_paid | total_share | net_balance | dues_outstanding 
+-------+------------+-------------+-------------+------------------
+ Ronak |    4900.00 |     2675.50 |     2224.50 |           225.50
+ Priya |          0 |           0 |           0 |                0
+ Arjun |     451.00 |     2675.50 |    -2224.50 |          2450.00
+(3 rows)
+
+--- Q9 [VIEW] Unified timeline: transport + stays + activities in one feed (vw_trip_timeline)
+   item_type   |              title              |     start_time      |      end_time       
+---------------+---------------------------------+---------------------+---------------------
+ transport     | bus: KSRTC Airavat              | 2026-12-20 22:00:00 | 2026-12-21 05:30:00
+ accommodation | Hampi Heritage Guest House      | 2026-12-21 06:00:00 | 2026-12-23 11:00:00
+ activity      | Sunrise at Matanga Hill         | 2026-12-21 07:30:00 | 2026-12-21 09:30:00
+ activity      | Virupaksha Temple Visit         | 2026-12-21 10:00:00 | 2026-12-21 11:30:00
+ activity      | Lunch at Mango Tree             | 2026-12-21 13:00:00 | 2026-12-21 14:15:00
+ activity      | Coracle Ride on the Tungabhadra | 2026-12-22 08:00:00 | 2026-12-22 10:00:00
+ activity      | Vittala Temple & Stone Chariot  | 2026-12-22 10:30:00 | 2026-12-22 12:30:00
+ activity      | Sunset at Hemakuta Hill         | 2026-12-22 17:30:00 | 2026-12-22 19:00:00
+(8 rows)
+
+--- Q10 [stored function] Headline numbers for the dashboard (fn_trip_stats)
+ total_destinations | total_transports | total_accommodations | total_activities | total_members | total_planned | total_spent | trip_duration_days 
+--------------------+------------------+----------------------+------------------+---------------+---------------+-------------+--------------------
+                  3 |                2 |                    1 |                7 |             3 |      11500.00 |     5351.00 |                  5
+(1 row)
+
+--- Q11 [self-join on time ranges] Overlapping activities in the same trip (soft conflicts)
+ activity_a | activity_b 
+------------+------------
+(0 rows)
+
+--- Q12 [range overlap with JOIN] Activities that touch the hotel check-out hour (hard conflict, as the app computes it)
+                title                |     start_time      |      end_time       |           hotel            |      check_out      
+-------------------------------------+---------------------+---------------------+----------------------------+---------------------
+ Lotus Mahal & Elephant Stables Walk | 2026-12-23 10:15:00 | 2026-12-23 12:00:00 | Hampi Heritage Guest House | 2026-12-23 11:00:00
+(1 row)
+
+--- Q13 [full-text search, GIN index] Activities matching any of: temple, river  (ranked)
+              title              | rank  
+---------------------------------+-------
+ Virupaksha Temple Visit         | 2.600
+ Vittala Temple & Stone Chariot  | 2.200
+ Lunch at Mango Tree             | 0.800
+ Coracle Ride on the Tungabhadra | 0.800
+ Sunrise at Matanga Hill         | 0.400
+(5 rows)
+
+--- Q14 [aggregate over JOIN] Estimated activity cost is in MongoDB, but slots per type live here
+  slot_type  | activities |    total_hours     
+-------------+------------+--------------------
+ sightseeing |          4 | 7.2500000000000000
+ adventure   |          1 | 2.0000000000000000
+ dining      |          1 | 1.2500000000000000
+ leisure     |          1 | 1.5000000000000000
+(4 rows)
+
+--- Q15 [admin report: LEFT JOIN + GROUP BY] Users and how many trips they are on
+      name      | role  | trips 
+----------------+-------+-------
+ Arjun          | user  |     1
+ Priya          | user  |     1
+ Ronak          | user  |     1
+ TripSync Admin | admin |     0
+(4 rows)
+

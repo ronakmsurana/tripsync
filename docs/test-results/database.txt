@@ -1,0 +1,12 @@
+
+ RUN  v5.0.5 /home/claude/tripsync-main
+
+ ✓  db  tests/db/constraints.test.ts (16 tests) 397ms
+ ✓  db  tests/db/vector-service.test.ts (8 tests) 252ms
+ ✓  db  tests/db/advanced.test.ts (15 tests) 196ms
+
+ Test Files  3 passed (3)
+      Tests  39 passed (39)
+   Start at  15:21:25
+   Duration  2.10s (tests 56%, import 29%, transform 15%, worker 1%)
+

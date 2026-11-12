@@ -1,163 +1,78 @@
 // ============================================
-// Budget Service
+// Budget service
 // ============================================
-// Aggregates budget data across PostgreSQL
-// (fixed costs) and MongoDB (estimated activity
-// costs) to provide a unified financial view.
+// Planned vs. spent comes from the SQL view vw_budget_vs_actual, member
+// balances from vw_member_balances (both computed from persisted rows).
+// MongoDB contributes the ESTIMATED cost of planned activities via an
+// aggregation pipeline.
 // ============================================
-
 import prisma from "@/lib/db/postgres";
 import { getActivitiesCollection } from "@/lib/db/mongodb";
-import { BudgetSummary } from "@/types";
+import { BalanceRow, BudgetOverview, BudgetRow } from "@/types";
+import { decimalToString, fromMinor, percent, signedToMinor } from "@/lib/utils/money";
 
-/**
- * Get budget vs. actual spending summary for a trip.
- * Uses the stored function fn_trip_budget_summary if available,
- * otherwise falls back to a Prisma-based aggregation.
- */
-export async function getBudgetSummary(
-  tripId: number
-): Promise<BudgetSummary[]> {
-  try {
-    // Try using the stored function first (demonstrates advanced DB feature)
-    const results = await prisma.$queryRaw<BudgetSummary[]>`
-      SELECT
-        b.category,
-        b.planned_amount AS planned,
-        COALESCE(SUM(e.amount), 0) AS spent,
-        b.planned_amount - COALESCE(SUM(e.amount), 0) AS remaining
-      FROM budgets b
-      LEFT JOIN expenses e
-        ON e.trip_id = b.trip_id AND e.category = b.category
-      WHERE b.trip_id = ${tripId}
-      GROUP BY b.category, b.planned_amount
-      ORDER BY b.category
-    `;
-
-    return results.map((r) => ({
-      category: r.category,
-      planned: Number(r.planned),
-      spent: Number(r.spent),
-      remaining: Number(r.remaining),
-    }));
-  } catch {
-    return [];
-  }
+interface ViewRow { category: string; planned: unknown; spent: unknown; remaining: unknown; utilization_pct: unknown }
+interface BalRow {
+  user_id: number; name: string; member_role: string;
+  total_paid: unknown; total_share: unknown; settlements_made: unknown; settlements_received: unknown; net_balance: unknown; dues_outstanding: unknown;
 }
 
-/**
- * Get estimated costs from MongoDB activities (not yet incurred expenses).
- * Aggregates by slot_type using a MongoDB aggregation pipeline.
- */
-export async function getEstimatedActivityCosts(
-  tripId: number
-): Promise<{ category: string; totalEstimated: number; count: number }[]> {
-  const activitiesCol = await getActivitiesCollection();
-
-  const pipeline = [
-    { $match: { tripId } },
-    {
-      $group: {
-        _id: "$slotType",
-        totalEstimated: { $sum: "$estimatedCost.amount" },
-        count: { $sum: 1 },
-      },
-    },
-    { $sort: { totalEstimated: -1 as const } },
-    {
-      $project: {
-        _id: 0,
-        category: "$_id",
-        totalEstimated: 1,
-        count: 1,
-      },
-    },
-  ];
-
-  const results = await activitiesCol.aggregate(pipeline).toArray();
-
-  return results.map((r) => ({
+export async function getEstimatedActivityCosts(tripId: number) {
+  const col = await getActivitiesCollection();
+  const rows = await col
+    .aggregate([
+      { $match: { tripId } },
+      { $group: { _id: "$slotType", totalEstimated: { $sum: "$estimatedCost.amount" }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+      { $project: { _id: 0, category: "$_id", totalEstimated: 1, count: 1 } },
+    ])
+    .toArray();
+  return rows.map((r) => ({
     category: r.category as string,
-    totalEstimated: Number(r.totalEstimated || 0),
-    count: Number(r.count || 0),
+    totalEstimated: decimalToString(r.totalEstimated?.toString?.() ?? r.totalEstimated ?? "0"),
+    count: Number(r.count),
   }));
 }
 
-/**
- * Get combined financial overview — merges SQL budget data with
- * MongoDB estimated costs for a comprehensive dashboard.
- */
-export async function getFinancialOverview(tripId: number) {
-  const [budgetSummary, estimatedCosts] = await Promise.all([
-    getBudgetSummary(tripId),
+export async function getBudgetOverview(tripId: number): Promise<BudgetOverview> {
+  const [viewRows, balRows, estimated] = await Promise.all([
+    prisma.$queryRaw<ViewRow[]>`
+      SELECT category, planned, spent, remaining, utilization_pct
+        FROM vw_budget_vs_actual WHERE trip_id = ${tripId} ORDER BY category`,
+    prisma.$queryRaw<BalRow[]>`
+      SELECT user_id, name, member_role, total_paid, total_share, settlements_made, settlements_received, net_balance, dues_outstanding
+        FROM vw_member_balances WHERE trip_id = ${tripId} ORDER BY net_balance DESC, name`,
     getEstimatedActivityCosts(tripId),
   ]);
 
-  // Calculate totals
-  const totalPlanned = budgetSummary.reduce(
-    (sum, b) => sum + b.planned,
-    0
-  );
-  const totalSpent = budgetSummary.reduce((sum, b) => sum + b.spent, 0);
-  const totalEstimatedActivities = estimatedCosts.reduce(
-    (sum, e) => sum + e.totalEstimated,
-    0
-  );
+  const rows: BudgetRow[] = viewRows.map((r) => ({
+    category: r.category,
+    planned: decimalToString(r.planned),
+    spent: decimalToString(r.spent),
+    remaining: decimalToString(r.remaining),
+    utilizationPct: r.utilization_pct === null ? null : Number(r.utilization_pct),
+  }));
+  const planned = rows.reduce((s, r) => s + signedToMinor(r.planned), 0);
+  const spent = rows.reduce((s, r) => s + signedToMinor(r.spent), 0);
+  const estimatedTotal = estimated.reduce((s, r) => s + signedToMinor(r.totalEstimated), 0);
+
+  const balances: BalanceRow[] = balRows.map((b) => ({
+    userId: b.user_id,
+    name: b.name,
+    memberRole: b.member_role,
+    totalPaid: decimalToString(b.total_paid),
+    totalShare: decimalToString(b.total_share),
+    settlementsMade: decimalToString(b.settlements_made),
+    settlementsReceived: decimalToString(b.settlements_received),
+    netBalance: decimalToString(b.net_balance),
+    duesOutstanding: decimalToString(b.dues_outstanding),
+  }));
 
   return {
-    budgetSummary,
-    estimatedActivityCosts: estimatedCosts,
-    totals: {
-      planned: totalPlanned,
-      spent: totalSpent,
-      remaining: totalPlanned - totalSpent,
-      estimatedActivities: totalEstimatedActivities,
-      projectedTotal: totalSpent + totalEstimatedActivities,
-    },
+    rows,
+    totals: { planned: fromMinor(planned), spent: fromMinor(spent), remaining: fromMinor(planned - spent), utilizationPct: percent(spent, planned) },
+    estimatedActivityCosts: estimated,
+    estimatedActivitiesTotal: fromMinor(estimatedTotal),
+    balances,
   };
-}
-
-/**
- * Get per-member expense breakdown for settlement tracking.
- */
-export async function getMemberExpenseBreakdown(tripId: number) {
-  const results = await prisma.$queryRaw<
-    Array<{
-      user_id: number;
-      name: string;
-      total_paid: number;
-      total_owed: number;
-      net_balance: number;
-    }>
-  >`
-    SELECT
-      u.user_id,
-      u.name,
-      COALESCE(paid.total, 0) AS total_paid,
-      COALESCE(owed.total, 0) AS total_owed,
-      COALESCE(paid.total, 0) - COALESCE(owed.total, 0) AS net_balance
-    FROM users u
-    INNER JOIN trip_members tm ON tm.user_id = u.user_id AND tm.trip_id = ${tripId}
-    LEFT JOIN (
-      SELECT paid_by AS user_id, SUM(amount) AS total
-      FROM expenses WHERE trip_id = ${tripId}
-      GROUP BY paid_by
-    ) paid ON paid.user_id = u.user_id
-    LEFT JOIN (
-      SELECT user_id, SUM(share_amount) AS total
-      FROM expense_splits es
-      INNER JOIN expenses e ON e.expense_id = es.expense_id
-      WHERE e.trip_id = ${tripId}
-      GROUP BY user_id
-    ) owed ON owed.user_id = u.user_id
-    ORDER BY net_balance DESC
-  `;
-
-  return results.map((r) => ({
-    userId: r.user_id,
-    name: r.name,
-    totalPaid: Number(r.total_paid),
-    totalOwed: Number(r.total_owed),
-    netBalance: Number(r.net_balance),
-  }));
 }

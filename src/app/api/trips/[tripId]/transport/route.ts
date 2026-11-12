@@ -1,97 +1,28 @@
-// ============================================
-// Transport API
-// GET  /api/trips/[tripId]/transport — List
-// POST /api/trips/[tripId]/transport — Create
-// ============================================
-
-import { NextRequest, NextResponse } from "next/server";
+// GET/POST /api/trips/[tripId]/transport
 import prisma from "@/lib/db/postgres";
-import { withTripRole } from "@/lib/auth/middleware";
-import { createTransportSchema } from "@/lib/utils/validation";
-import { TokenPayload } from "@/lib/auth/jwt";
+import { ANY_ROLE, ORGANIZER, route } from "@/lib/api/route";
+import { created, ok } from "@/lib/api/response";
+import { transportSchema } from "@/lib/utils/validation";
+import { parseLocalDateTime } from "@/lib/utils/time";
+import { assertDestinationsInTrip } from "@/lib/services/bookingGuards";
+import { transportDTO, transportInclude } from "@/lib/services/mappers";
 
-export const GET = withTripRole(
-  ["organizer", "member", "viewer"],
-  async (
-    _request: NextRequest,
-    context: { params: Promise<Record<string, string>> },
-    _user: TokenPayload,
-    _role: string
-  ) => {
-    try {
-      const params = await context.params;
-      const tripId = parseInt(params.tripId);
+export const GET = route({ trip: ANY_ROLE }, async ({ tripId }) => {
+  const rows = await prisma.transport.findMany({ where: { tripId }, include: transportInclude, orderBy: { departureTime: "asc" } });
+  return ok(rows.map(transportDTO));
+});
 
-      const transports = await prisma.transport.findMany({
-        where: { tripId },
-        include: {
-          departureDestination: { select: { name: true, location: true } },
-          arrivalDestination: { select: { name: true, location: true } },
-        },
-        orderBy: { departureTime: "asc" },
-      });
-
-      return NextResponse.json({ success: true, data: transports });
-    } catch (error) {
-      console.error("List transports error:", error);
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
-    }
-  }
-);
-
-export const POST = withTripRole(
-  ["organizer"],
-  async (
-    request: NextRequest,
-    context: { params: Promise<Record<string, string>> },
-    _user: TokenPayload,
-    _role: string
-  ) => {
-    try {
-      const params = await context.params;
-      const tripId = parseInt(params.tripId);
-      const body = await request.json();
-      const parsed = createTransportSchema.safeParse(body);
-
-      if (!parsed.success) {
-        return NextResponse.json(
-          { error: "Validation failed", details: parsed.error.flatten() },
-          { status: 400 }
-        );
-      }
-
-      const transport = await prisma.transport.create({
-        data: {
-          tripId,
-          transportType: parsed.data.transportType,
-          provider: parsed.data.provider,
-          departureDestinationId: parsed.data.departureDestinationId,
-          arrivalDestinationId: parsed.data.arrivalDestinationId,
-          departureTime: new Date(parsed.data.departureTime),
-          arrivalTime: new Date(parsed.data.arrivalTime),
-          bookingReference: parsed.data.bookingReference,
-          cost: parsed.data.cost,
-          status: parsed.data.status,
-        },
-        include: {
-          departureDestination: { select: { name: true } },
-          arrivalDestination: { select: { name: true } },
-        },
-      });
-
-      return NextResponse.json(
-        { success: true, data: transport },
-        { status: 201 }
-      );
-    } catch (error) {
-      console.error("Create transport error:", error);
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
-    }
-  }
-);
+export const POST = route({ trip: ORGANIZER }, async (ctx) => {
+  const d = await ctx.body(transportSchema);
+  await assertDestinationsInTrip(ctx.tripId, [d.departureDestinationId, d.arrivalDestinationId]);
+  const row = await prisma.transport.create({
+    data: {
+      tripId: ctx.tripId, transportType: d.transportType, provider: d.provider,
+      departureDestinationId: d.departureDestinationId, arrivalDestinationId: d.arrivalDestinationId,
+      departureTime: parseLocalDateTime(d.departureTime), arrivalTime: parseLocalDateTime(d.arrivalTime),
+      bookingReference: d.bookingReference, cost: d.cost, status: d.status,
+    },
+    include: transportInclude,
+  });
+  return created(transportDTO(row), "Transport added");
+});

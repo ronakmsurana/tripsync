@@ -1,94 +1,27 @@
-// ============================================
-// Accommodation API
-// GET  /api/trips/[tripId]/accommodation — List
-// POST /api/trips/[tripId]/accommodation — Create
-// ============================================
-
-import { NextRequest, NextResponse } from "next/server";
+// GET/POST /api/trips/[tripId]/accommodation
 import prisma from "@/lib/db/postgres";
-import { withTripRole } from "@/lib/auth/middleware";
-import { createAccommodationSchema } from "@/lib/utils/validation";
-import { TokenPayload } from "@/lib/auth/jwt";
+import { ANY_ROLE, ORGANIZER, route } from "@/lib/api/route";
+import { created, ok } from "@/lib/api/response";
+import { accommodationSchema } from "@/lib/utils/validation";
+import { parseLocalDateTime } from "@/lib/utils/time";
+import { accommodationDTO, accommodationInclude } from "@/lib/services/mappers";
+import { assertDestinationsInTrip } from "@/lib/services/bookingGuards";
 
-export const GET = withTripRole(
-  ["organizer", "member", "viewer"],
-  async (
-    _request: NextRequest,
-    context: { params: Promise<Record<string, string>> },
-    _user: TokenPayload,
-    _role: string
-  ) => {
-    try {
-      const params = await context.params;
-      const tripId = parseInt(params.tripId);
+export const GET = route({ trip: ANY_ROLE }, async ({ tripId }) => {
+  const rows = await prisma.accommodation.findMany({ where: { tripId }, include: accommodationInclude, orderBy: { checkIn: "asc" } });
+  return ok(rows.map(accommodationDTO));
+});
 
-      const accommodations = await prisma.accommodation.findMany({
-        where: { tripId },
-        include: {
-          destination: { select: { name: true, location: true } },
-        },
-        orderBy: { checkIn: "asc" },
-      });
-
-      return NextResponse.json({ success: true, data: accommodations });
-    } catch (error) {
-      console.error("List accommodations error:", error);
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
-    }
-  }
-);
-
-export const POST = withTripRole(
-  ["organizer"],
-  async (
-    request: NextRequest,
-    context: { params: Promise<Record<string, string>> },
-    _user: TokenPayload,
-    _role: string
-  ) => {
-    try {
-      const params = await context.params;
-      const tripId = parseInt(params.tripId);
-      const body = await request.json();
-      const parsed = createAccommodationSchema.safeParse(body);
-
-      if (!parsed.success) {
-        return NextResponse.json(
-          { error: "Validation failed", details: parsed.error.flatten() },
-          { status: 400 }
-        );
-      }
-
-      const accommodation = await prisma.accommodation.create({
-        data: {
-          tripId,
-          destinationId: parsed.data.destinationId,
-          name: parsed.data.name,
-          address: parsed.data.address,
-          checkIn: new Date(parsed.data.checkIn),
-          checkOut: new Date(parsed.data.checkOut),
-          bookingReference: parsed.data.bookingReference,
-          cost: parsed.data.cost,
-          status: parsed.data.status,
-        },
-        include: {
-          destination: { select: { name: true } },
-        },
-      });
-
-      return NextResponse.json(
-        { success: true, data: accommodation },
-        { status: 201 }
-      );
-    } catch (error) {
-      console.error("Create accommodation error:", error);
-      return NextResponse.json(
-        { error: "Internal server error" },
-        { status: 500 }
-      );
-    }
-  }
-);
+export const POST = route({ trip: ORGANIZER }, async (ctx) => {
+  const d = await ctx.body(accommodationSchema);
+  await assertDestinationsInTrip(ctx.tripId, [d.destinationId]);
+  const row = await prisma.accommodation.create({
+    data: {
+      tripId: ctx.tripId, destinationId: d.destinationId, name: d.name, address: d.address,
+      checkIn: parseLocalDateTime(d.checkIn), checkOut: parseLocalDateTime(d.checkOut),
+      bookingReference: d.bookingReference, cost: d.cost, status: d.status,
+    },
+    include: accommodationInclude,
+  });
+  return created(accommodationDTO(row), "Stay added");
+});

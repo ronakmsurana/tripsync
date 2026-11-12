@@ -4,9 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Navbar from "@/components/Navbar";
+import { api, errorMessage, useAuth } from "@/lib/client/api";
+import type { UserDTO } from "@/types";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { setSignedIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -14,49 +17,18 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError(null);
-
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (email === "john@example.com" || email === "sarah@example.com") {
-          handleQuickLogin(email === "john@example.com" ? "organizer" : "member");
-          return;
-        }
-        throw new Error(data.error || "Login failed");
-      }
-
-      localStorage.setItem("tripsync_user", JSON.stringify(data.data.user));
-      localStorage.setItem("tripsync_token", data.data.token);
-      router.push("/dashboard");
-    } catch (err: unknown) {
-      if (email === "john@example.com" || email === "sarah@example.com") {
-        handleQuickLogin(email === "john@example.com" ? "organizer" : "member");
-        return;
-      }
-      setError(err instanceof Error ? err.message : "Invalid credentials");
-    } finally {
+      const data = await api<{ user: UserDTO }>("/api/auth/login", { method: "POST", body: { email, password } });
+      setSignedIn(data.user);
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
+    } catch (err) {
+      setError(errorMessage(err));
       setLoading(false);
     }
-  };
-
-  const handleQuickLogin = (role: "organizer" | "member") => {
-    const user =
-      role === "organizer"
-        ? { userId: 1, name: "John Doe", email: "john@example.com", role: "organizer" as const }
-        : { userId: 2, name: "Sarah Connor", email: "sarah@example.com", role: "member" as const };
-
-    localStorage.setItem("tripsync_user", JSON.stringify(user));
-    localStorage.setItem("tripsync_token", "demo-token-" + role);
-    router.push("/dashboard");
   };
 
   return (
@@ -70,31 +42,8 @@ export default function LoginPage() {
             <p className="text-xs text-slate-500 mt-1">Coordinate group schedules and travel logistics</p>
           </div>
 
-          {/* Quick Demo Logins Box */}
-          <div className="mb-6 p-3 border border-slate-200 bg-slate-50 text-xs">
-            <div className="text-slate-700 font-semibold mb-2">
-              Fast Demo Accounts:
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin("organizer")}
-                className="px-2.5 py-1.5 text-xs font-semibold bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 rounded-none transition-colors"
-              >
-                Organizer (John)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin("member")}
-                className="px-2.5 py-1.5 text-xs font-semibold bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 rounded-none transition-colors"
-              >
-                Traveler (Sarah)
-              </button>
-            </div>
-          </div>
-
           {error && (
-            <div className="mb-4 p-2.5 border border-red-300 bg-red-50 text-red-800 text-xs font-medium">
+            <div role="alert" className="mb-4 p-2.5 border border-red-300 bg-red-50 text-red-800 text-xs font-medium">
               {error}
             </div>
           )}
@@ -106,7 +55,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="john@example.com"
+                placeholder="you@example.com" autoComplete="email"
                 required
                 className="input-sharp"
               />
@@ -118,7 +67,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="••••••••" autoComplete="current-password"
                 required
                 className="input-sharp"
               />

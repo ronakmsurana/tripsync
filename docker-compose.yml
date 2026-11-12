@@ -1,0 +1,19 @@
+# Local databases for development: PostgreSQL 16 with pgvector, and MongoDB.
+#   docker compose up -d
+# Then use the connection strings from .env.example (change the password!).
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: tripsync
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your shell or .env}
+      POSTGRES_DB: tripsync
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  mongo:
+    image: mongo:7
+    ports: ["27017:27017"]
+    volumes: ["mongodata:/data/db"]
+volumes:
+  pgdata:
+  mongodata:

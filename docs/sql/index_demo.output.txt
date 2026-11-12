@@ -1,0 +1,66 @@
+=== WITH index expenses_trip_id_category_idx ===
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ GroupAggregate (actual rows=1 loops=1)
+   Buffers: shared hit=7
+   InitPlan 2 (returns $1)
+     ->  Result (actual rows=1 loops=1)
+           Buffers: shared hit=3
+           InitPlan 1 (returns $0)
+             ->  Limit (actual rows=1 loops=1)
+                   Buffers: shared hit=3
+                   ->  Index Only Scan using trips_pkey on trips (actual rows=1 loops=1)
+                         Index Cond: (trip_id IS NOT NULL)
+                         Heap Fetches: 1
+                         Buffers: shared hit=3
+   ->  Index Scan using expenses_trip_id_category_idx on expenses (actual rows=17 loops=1)
+         Index Cond: ((trip_id = $1) AND ((category)::text = 'food'::text))
+         Buffers: shared hit=7
+ Planning:
+   Buffers: shared hit=67
+ Planning Time: 0.312 ms
+ Execution Time: 0.109 ms
+(19 rows)
+
+=== WITHOUT the index (sequential scan of every row) ===
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ GroupAggregate (actual rows=1 loops=1)
+   Buffers: shared hit=1286
+   InitPlan 2 (returns $1)
+     ->  Result (actual rows=1 loops=1)
+           Buffers: shared hit=3
+           InitPlan 1 (returns $0)
+             ->  Limit (actual rows=1 loops=1)
+                   Buffers: shared hit=3
+                   ->  Index Only Scan using trips_pkey on trips (actual rows=1 loops=1)
+                         Index Cond: (trip_id IS NOT NULL)
+                         Heap Fetches: 1
+                         Buffers: shared hit=3
+   ->  Seq Scan on expenses (actual rows=17 loops=1)
+         Filter: ((trip_id = $1) AND ((category)::text = 'food'::text))
+         Rows Removed by Filter: 149983
+         Buffers: shared hit=1286
+ Planning:
+   Buffers: shared hit=5
+ Planning Time: 0.132 ms
+ Execution Time: 11.923 ms
+(20 rows)
+
+=== index restored ===
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ GroupAggregate (actual rows=1 loops=1)
+   InitPlan 2 (returns $1)
+     ->  Result (actual rows=1 loops=1)
+           InitPlan 1 (returns $0)
+             ->  Limit (actual rows=1 loops=1)
+                   ->  Index Only Scan using trips_pkey on trips (actual rows=1 loops=1)
+                         Index Cond: (trip_id IS NOT NULL)
+                         Heap Fetches: 1
+   ->  Index Scan using expenses_trip_id_category_idx on expenses (actual rows=17 loops=1)
+         Index Cond: ((trip_id = $1) AND ((category)::text = 'food'::text))
+ Planning Time: 0.223 ms
+ Execution Time: 0.084 ms
+(12 rows)
+

@@ -1,93 +1,30 @@
-// ============================================
-// Auth API — Register
-// POST /api/auth/register
-// ============================================
-
+// POST /api/auth/register — create account (bcrypt-hashed password, httpOnly session cookie)
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/db/postgres";
-import { signToken } from "@/lib/auth/jwt";
 import { registerSchema } from "@/lib/utils/validation";
+import { startSession } from "@/lib/auth/session";
+import { errorResponse, conflict } from "@/lib/api/errors";
+import { clientIp, rateLimit } from "@/lib/security/rateLimit";
+
+const BCRYPT_ROUNDS = 12;
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const parsed = registerSchema.safeParse(body);
+    rateLimit(`register:${clientIp(request)}`, 20, 60 * 60 * 1000);
+    const body = registerSchema.parse(await request.json().catch(() => ({})));
+    const exists = await prisma.user.findUnique({ where: { email: body.email }, select: { userId: true } });
+    if (exists) throw conflict("An account with this email already exists.", undefined, "EMAIL_TAKEN");
 
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    const { name, email, password, phone } = parsed.data;
-
-    // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    const passwordHash = await bcrypt.hash(body.password, BCRYPT_ROUNDS);
+    const user = await prisma.user.create({
+      data: { name: body.name, email: body.email, passwordHash, phone: body.phone },
+      select: { userId: true, name: true, email: true, role: true },
     });
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: "An account with this email already exists" },
-        { status: 409 }
-      );
-    }
-
-    // Hash password (never store plaintext — security requirement)
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    // Create user within a transaction
-    const user = await prisma.$transaction(async (tx) => {
-      return tx.user.create({
-        data: {
-          name,
-          email,
-          passwordHash,
-          phone,
-        },
-        select: {
-          userId: true,
-          name: true,
-          email: true,
-          status: true,
-          createdAt: true,
-        },
-      });
-    });
-
-    // Generate JWT
-    const token = await signToken({
-      userId: user.userId,
-      email: user.email,
-      name: user.name,
-    });
-
-    const response = NextResponse.json(
-      {
-        success: true,
-        data: { user, token },
-        message: "Account created successfully",
-      },
-      { status: 201 }
-    );
-
-    // Also set as httpOnly cookie
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-      path: "/",
-    });
-
-    return response;
-  } catch (error) {
-    console.error("Register error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const res = NextResponse.json({ success: true, data: { user }, message: "Account created" }, { status: 201 });
+    await startSession(res, user.userId, request);
+    return res;
+  } catch (e) {
+    return errorResponse(e);
   }
 }

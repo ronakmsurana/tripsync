@@ -1,0 +1,30 @@
+
+ RUN  v5.0.5 /home/claude/tripsync-main
+
+ ✓  unit  tests/unit/conflictEngine.test.ts (11 tests) 26ms
+ ✓  unit  tests/unit/validation.test.ts (9 tests) 22ms
+stderr | tests/unit/errors-and-security.test.ts > error translation > maps zod errors to field messages and hides unknown internals
+Unhandled error: Error: password authentication failed for user tripsync at 10.0.0.5
+    at /home/claude/tripsync-main/tests/unit/errors-and-security.test.ts:24:33
+    at file:///home/claude/tripsync-main/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:1632:35
+    at file:///home/claude/tripsync-main/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:26
+    at file:///home/claude/tripsync-main/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3338:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///home/claude/tripsync-main/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3333:10)
+    at file:///home/claude/tripsync-main/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3318:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///home/claude/tripsync-main/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3276:10)
+    at file:///home/claude/tripsync-main/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3904:64
+
+ ✓  unit  tests/unit/errors-and-security.test.ts (7 tests) 14ms
+ ✓  unit  tests/unit/money.test.ts (6 tests) 7ms
+ ✓  unit  tests/unit/time.test.ts (3 tests) 5ms
+
+ Test Files  5 passed (5)
+      Tests  36 passed (36)
+   Start at  15:21:23
+   Duration  1.58s (import 65%, transform 26%, tests 7%, worker 2%)
+
+    Isolate  5 workers spawned · ~98ms startup each (spawn + environment, per file)
+             at least ~392ms faster with isolate: false — reuses workers across files instead of one per file
+

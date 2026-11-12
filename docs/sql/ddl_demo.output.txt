@@ -1,0 +1,19 @@
+psql:docs/sql/ddl_demo.sql:6: NOTICE:  table "place_review" does not exist, skipping
+                                            Table "public.place_review"
+   Column   |            Type             | Collation | Nullable |                     Default                     
+------------+-----------------------------+-----------+----------+-------------------------------------------------
+ review_id  | integer                     |           | not null | nextval('place_review_review_id_seq'::regclass)
+ trip_id    | integer                     |           | not null | 
+ place      | character varying(200)      |           | not null | 
+ stars      | integer                     |           | not null | 
+ created_at | timestamp without time zone |           | not null | CURRENT_TIMESTAMP
+ comment    | text                        |           |          | 
+Indexes:
+    "place_review_pkey" PRIMARY KEY, btree (review_id)
+    "idx_review_trip" btree (trip_id, stars DESC)
+    "uq_review_once" UNIQUE CONSTRAINT, btree (trip_id, place)
+Check constraints:
+    "place_review_stars_check" CHECK (stars >= 1 AND stars <= 5)
+Foreign-key constraints:
+    "place_review_trip_id_fkey" FOREIGN KEY (trip_id) REFERENCES trips(trip_id) ON DELETE CASCADE
+

@@ -1,0 +1,10 @@
+   trip_name   |  status   | expenses | spent  
+---------------+-----------+----------+--------
+ DML Demo Trip | confirmed |        1 | 250.00
+(1 row)
+
+ splits_left_after_delete 
+--------------------------
+                        0
+(1 row)
+

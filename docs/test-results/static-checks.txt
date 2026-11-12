@@ -1,0 +1,10 @@
+$ npm run lint
+
+> tripsync@0.1.0 lint
+> eslint
+
+
+$ npm run typecheck
+> tripsync@0.1.0 typecheck
+> tsc --noEmit
+

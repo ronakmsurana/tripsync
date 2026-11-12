@@ -1,0 +1,184 @@
+
+=== Sample document ===
+{
+  "_id": "6ae6074341efa932a43c85b2",
+  "tripId": 1,
+  "slotType": "sightseeing",
+  "title": "Sunrise at Matanga Hill",
+  "description": "Climb Matanga Hill for a golden sunrise over the boulder-strewn ruins and the Tungabhadra river.",
+  "location": {
+    "name": "Matanga Hill, Hampi"
+  },
+  "tags": [
+    "sunrise",
+    "hiking",
+    "photography",
+    "scenic"
+  ],
+  "estimatedDurationMinutes": 120,
+  "estimatedCost": {
+    "amount": "0",
+    "currency": "INR"
+  },
+  "customFields": {
+    "difficulty": "moderate"
+  },
+  "createdBy": 2,
+  "createdAt": "2026-10-31T15:20:35.441Z",
+  "updatedAt": "2026-10-31T15:20:35.441Z"
+}
+
+=== Indexes ===
+[
+  {
+    "name": "_id_",
+    "key": {
+      "_id": 1
+    }
+  },
+  {
+    "name": "idx_trip_slottype",
+    "key": {
+      "tripId": 1,
+      "slotType": 1
+    }
+  },
+  {
+    "name": "idx_tags_multikey",
+    "key": {
+      "tags": 1
+    }
+  },
+  {
+    "name": "idx_trip_created",
+    "key": {
+      "tripId": 1,
+      "createdAt": -1
+    }
+  }
+]
+
+=== Pipeline 1 — estimated cost and count per activity type ($match, $group, $sort, $project) ===
+[
+  {
+    "activities": 4,
+    "estimatedCost": "1250",
+    "type": "sightseeing",
+    "avgMinutes": 109
+  },
+  {
+    "activities": 1,
+    "estimatedCost": "450",
+    "type": "dining",
+    "avgMinutes": 75
+  },
+  {
+    "activities": 1,
+    "estimatedCost": "400",
+    "type": "adventure",
+    "avgMinutes": 120
+  },
+  {
+    "activities": 1,
+    "estimatedCost": "0",
+    "type": "leisure",
+    "avgMinutes": 90
+  }
+]
+
+=== Pipeline 2 — tag popularity ($unwind, $group, $sort, $limit) ===
+[
+  {
+    "_id": "heritage",
+    "count": 3,
+    "titles": [
+      "Virupaksha Temple Visit",
+      "Vittala Temple & Stone Chariot",
+      "Lotus Mahal & Elephant Stables Walk"
+    ]
+  },
+  {
+    "_id": "architecture",
+    "count": 2,
+    "titles": [
+      "Virupaksha Temple Visit",
+      "Lotus Mahal & Elephant Stables Walk"
+    ]
+  },
+  {
+    "_id": "scenic",
+    "count": 2,
+    "titles": [
+      "Sunset at Hemakuta Hill",
+      "Sunrise at Matanga Hill"
+    ]
+  },
+  {
+    "_id": "temple",
+    "count": 2,
+    "titles": [
+      "Virupaksha Temple Visit",
+      "Vittala Temple & Stone Chariot"
+    ]
+  },
+  {
+    "_id": "unesco",
+    "count": 2,
+    "titles": [
+      "Virupaksha Temple Visit",
+      "Vittala Temple & Stone Chariot"
+    ]
+  }
+]
+
+=== Pipeline 3 — $facet: several summaries in ONE pass (what GET /api/trips/:id/insights runs) ===
+[
+  {
+    "byType": [
+      {
+        "_id": "sightseeing",
+        "count": 4
+      },
+      {
+        "_id": "leisure",
+        "count": 1
+      },
+      {
+        "_id": "adventure",
+        "count": 1
+      },
+      {
+        "_id": "dining",
+        "count": 1
+      }
+    ],
+    "topTags": [
+      {
+        "_id": "heritage",
+        "count": 3
+      },
+      {
+        "_id": "temple",
+        "count": 2
+      },
+      {
+        "_id": "scenic",
+        "count": 2
+      }
+    ],
+    "totals": [
+      {
+        "_id": null,
+        "activities": 7,
+        "minutes": 720,
+        "estimated": "2100"
+      }
+    ]
+  }
+]
+
+=== Validator: invalid documents are rejected BY MONGODB ===
+✓ unknown slotType: rejected — Document failed validation (code 121)
+✓ empty title: rejected — Document failed validation (code 121)
+✓ missing createdBy: rejected — Document failed validation (code 121)
+✓ too many tags: rejected — Document failed validation (code 121)

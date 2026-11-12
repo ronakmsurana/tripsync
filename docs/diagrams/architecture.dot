@@ -1,0 +1,27 @@
+digraph Arch {
+  graph [rankdir=TB, fontname="Helvetica", labelloc=t, label="TripSync — system architecture", fontsize=18, nodesep=0.5, ranksep=0.6, pad=0.3, compound=true];
+  node [shape=box, style="filled", fontname="Helvetica", fontsize=11, fillcolor="white", color="#0f172a"];
+  edge [fontname="Helvetica", fontsize=9, color="#475569"];
+
+  subgraph cluster_browser { label="Browser"; style=dashed; color="#94a3b8";
+    ui [label="Next.js pages (React)\nlogin · dashboard · trip tabs · admin", fillcolor="#e2e8f0"]; }
+
+  subgraph cluster_next { label="Next.js server (Route Handlers)"; style=dashed; color="#94a3b8";
+    route [label="route() wrapper\nOrigin check · session cookie → user\nadmin / trip-role authorization\nzod validation · error envelope", fillcolor="#dbeafe"];
+    svc [label="Service layer\ntrip · activity · expense · budget\nconflict engine · search index · sync", fillcolor="#dbeafe"];
+    emb [label="Embedding provider\nall-MiniLM-L6-v2 (local, 384-d)", fillcolor="#fef3c7"]; }
+
+  subgraph cluster_data { label="Data stores"; style=dashed; color="#94a3b8";
+    pgs [label="PostgreSQL 16\nSOURCE OF TRUTH\nusers · trips · members · destinations\ntransport · stays · expenses · splits\npayments · budgets · itinerary_slots\nCHECKs · triggers · views · functions", fillcolor="#dcfce7"];
+    vec [label="pgvector + tsvector\nactivity_embeddings\nHNSW (cosine) · GIN (full text)", fillcolor="#dcfce7"];
+    mongo [label="MongoDB\nactivities collection\n$jsonSchema validator · indexes\n$group / $facet aggregations", fillcolor="#fce7f3"]; }
+
+  ui -> route [label="fetch JSON\n(httpOnly cookie)"];
+  route -> svc;
+  svc -> pgs [label="Prisma (pg adapter)\ntransactions · $queryRaw views"];
+  svc -> mongo [label="mongodb driver"];
+  svc -> emb [label="embed text"];
+  svc -> vec [label="cosine / full-text search"];
+  pgs -> vec [style=dotted, dir=none, label="same database"];
+  pgs -> mongo [style=dashed, color="#b45309", fontcolor="#b45309", label="linked by mongo_doc_id\nreconcile() repairs drift"];
+}

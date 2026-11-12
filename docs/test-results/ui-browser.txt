@@ -1,0 +1,25 @@
+Journey A — a brand-new user
+  ✓ landing page renders and no longer links to a hard-coded demo trip
+  ✓ protected page redirects anonymous visitors to login
+  ✓ registration form validates and creates the account
+  ✓ create a trip from the dashboard
+  ✓ add a second destination and a transport booking
+  ✓ add a stay (check-in/out) through the form
+  ✓ an activity that clashes with check-out shows a conflict and a suggested slot
+  ✓ budget and expenses are computed from saved data
+  ✓ search finds the activity and says which engine answered
+  ✓ schedule assistant is clear after the fix
+  ✓ everything persists after a full page reload
+  ✓ no failed network requests during the journey
+  ✓ sign out, sign back in, data still there
+  ✓ dashboard search and filters work
+Journey B — access isolation
+  ✓ another user cannot open the first user's trip
+Journey C — seeded demo trip (screenshots)
+  ✓ demo organizer sees timeline, conflict banner and every tab
+  ✓ viewer sees a read-only trip (no add/edit controls)
+  ✓ admin page shows the three stores and is hidden from normal users
+  ✓ architecture page uses the app's light theme
+  ✓ mobile layout (390px) has no horizontal overflow
+
+UI end-to-end: 20/20 steps passed

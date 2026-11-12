@@ -1,0 +1,9 @@
+# Fresh database build (from empty databases)
+applying prisma/migrations/20261030000100_init/migration.sql
+applying prisma/migrations/20261030000200_search_index/migration.sql
+applying prisma/migrations/20261030000300_integrity_triggers/migration.sql
+applying prisma/migrations/20261030000400_reporting_views/migration.sql
+✓ MongoDB ready. Indexes: _id_, idx_trip_slottype, idx_tags_multikey, idx_trip_created
+✓ Seeded "Hampi Heritage Tour" (trip #1). Demo logins: ronak@example.com (organizer), arjun@example.com (member), priya@example.com (viewer), admin@tripsync.local (admin).
+re-running seed (idempotency):
+• demo trip already exists (trip #1); nothing to do

@@ -1,153 +1,79 @@
 // ============================================
-// Embedding Service (pgvector + Transformers)
+// Embedding provider (local sentence-transformer)
 // ============================================
-// Generates text embeddings using a local
-// sentence-transformer model and stores them
-// in PostgreSQL via pgvector for semantic search.
+// Model:   Xenova/all-MiniLM-L6-v2 (384 dimensions) run locally through
+//          @xenova/transformers (ONNX). No API key and no external service
+//          at query time; the weights (~25 MB) are downloaded once from the
+//          Hugging Face hub on first use and cached on disk.
+// Failure: if the model cannot be loaded (offline, blocked network, disabled)
+//          an EmbeddingUnavailableError is thrown. Callers fall back to
+//          PostgreSQL full-text search and SAY SO — nothing is faked.
 // ============================================
+import { env } from "@/lib/env";
 
-import prisma from "@/lib/db/postgres";
-import { SearchResult } from "@/types";
-import { getActivitiesCollection } from "@/lib/db/mongodb";
-import { ObjectId } from "mongodb";
+export const EMBEDDING_DIM = 384;
 
-// Dynamic import for the transformers pipeline (heavy module)
-let pipelineInstance: ReturnType<typeof createPipelineSingleton> | null = null;
-
-function createPipelineSingleton() {
-  let instance: unknown = null;
-
-  return async () => {
-    if (!instance) {
-      const { pipeline } = await import("@xenova/transformers");
-      instance = await pipeline(
-        "feature-extraction",
-        process.env.EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2"
-      );
-    }
-    return instance;
-  };
-}
-
-function getPipeline() {
-  if (!pipelineInstance) {
-    pipelineInstance = createPipelineSingleton();
+export class EmbeddingUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmbeddingUnavailableError";
   }
-  return pipelineInstance();
 }
 
-/**
- * Generate an embedding vector for the given text.
- * Returns a 384-dimensional float array.
- */
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const extractor = await getPipeline();
-  // @ts-expect-error - Pipeline callable
-  const output = await extractor(text, {
-    pooling: "mean",
-    normalize: true,
+type Extractor = (text: string, opts: { pooling: "mean"; normalize: boolean }) => Promise<{ data: Float32Array }>;
+
+const g = globalThis as unknown as {
+  __embedder?: Promise<Extractor>;
+  __embedderFailedAt?: number;
+  __embedderError?: string;
+};
+const RETRY_AFTER_MS = 60_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
   });
-  return Array.from(output.data as Float32Array);
 }
 
-/**
- * Store an activity embedding in PostgreSQL.
- * Creates or updates the embedding for the given MongoDB document.
- */
-export async function storeEmbedding(
-  mongoDocId: string,
-  tripId: number,
-  title: string,
-  text: string
-): Promise<void> {
-  const embedding = await generateEmbedding(text);
-  const vectorStr = `[${embedding.join(",")}]`;
-
-  // Upsert: insert or update on conflict
-  await prisma.$executeRaw`
-    INSERT INTO activity_embeddings (mongo_doc_id, trip_id, title, embedding)
-    VALUES (${mongoDocId}, ${tripId}, ${title}, ${vectorStr}::vector)
-    ON CONFLICT (mongo_doc_id)
-    DO UPDATE SET
-      title = EXCLUDED.title,
-      embedding = EXCLUDED.embedding,
-      created_at = CURRENT_TIMESTAMP
-  `;
+async function loadExtractor(): Promise<Extractor> {
+  const { pipeline } = await import("@xenova/transformers");
+  const extractor = await pipeline("feature-extraction", env().EMBEDDING_MODEL);
+  return extractor as unknown as Extractor;
 }
 
-/**
- * Delete an embedding when an activity is removed.
- */
-export async function deleteEmbedding(mongoDocId: string): Promise<void> {
-  await prisma.$executeRaw`
-    DELETE FROM activity_embeddings WHERE mongo_doc_id = ${mongoDocId}
-  `;
+export function embeddingStatus(): { enabled: boolean; model: string; lastError?: string } {
+  const e = env();
+  return { enabled: e.EMBEDDING_ENABLED, model: e.EMBEDDING_MODEL, lastError: g.__embedderError };
 }
 
-/**
- * Perform semantic similarity search.
- * Returns activities most similar to the query text.
- */
-export async function semanticSearch(
-  query: string,
-  tripId?: number,
-  limit: number = 5
-): Promise<SearchResult[]> {
-  const queryEmbedding = await generateEmbedding(query);
-  const vectorStr = `[${queryEmbedding.join(",")}]`;
-
-  // Query pgvector with cosine similarity
-  let results: Array<{
-    mongo_doc_id: string;
-    title: string;
-    similarity: number;
-  }>;
-
-  if (tripId) {
-    results = await prisma.$queryRaw`
-      SELECT
-        mongo_doc_id,
-        title,
-        1 - (embedding <=> ${vectorStr}::vector) AS similarity
-      FROM activity_embeddings
-      WHERE trip_id = ${tripId}
-      ORDER BY embedding <=> ${vectorStr}::vector
-      LIMIT ${limit}
-    `;
-  } else {
-    results = await prisma.$queryRaw`
-      SELECT
-        mongo_doc_id,
-        title,
-        1 - (embedding <=> ${vectorStr}::vector) AS similarity
-      FROM activity_embeddings
-      ORDER BY embedding <=> ${vectorStr}::vector
-      LIMIT ${limit}
-    `;
+async function getExtractor(): Promise<Extractor> {
+  const cfg = env();
+  if (!cfg.EMBEDDING_ENABLED) throw new EmbeddingUnavailableError("Semantic search is disabled (EMBEDDING_ENABLED=false).");
+  if (g.__embedderFailedAt && Date.now() - g.__embedderFailedAt < RETRY_AFTER_MS) {
+    throw new EmbeddingUnavailableError(`Embedding model unavailable: ${g.__embedderError}`);
   }
-
-  // Enrich with MongoDB activity data
-  const activitiesCol = await getActivitiesCollection();
-  const enrichedResults: SearchResult[] = [];
-
-  for (const row of results) {
-    const activity = await activitiesCol.findOne({
-      _id: new ObjectId(row.mongo_doc_id),
-    });
-
-    enrichedResults.push({
-      mongoDocId: row.mongo_doc_id,
-      title: row.title,
-      similarity: Number(row.similarity),
-      activity: activity
-        ? {
-            ...activity,
-            _id: activity._id.toString(),
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any
-        : undefined,
+  if (!g.__embedder) {
+    g.__embedder = withTimeout(loadExtractor(), cfg.EMBEDDING_TIMEOUT_MS, "Loading the embedding model").catch((err) => {
+      g.__embedder = undefined;
+      g.__embedderFailedAt = Date.now();
+      g.__embedderError = err instanceof Error ? err.message : String(err);
+      throw new EmbeddingUnavailableError(`Embedding model unavailable: ${g.__embedderError}`);
     });
   }
+  return g.__embedder;
+}
 
-  return enrichedResults;
+/** L2-normalised 384-d vector. Throws EmbeddingUnavailableError if the model cannot run. */
+export async function embedText(text: string): Promise<number[]> {
+  const extractor = await getExtractor();
+  const out = await extractor(text.slice(0, 2000), { pooling: "mean", normalize: true });
+  const v = Array.from(out.data);
+  if (v.length !== EMBEDDING_DIM) throw new EmbeddingUnavailableError(`Unexpected embedding size ${v.length}`);
+  return v;
+}
+
+/** pgvector text literal: "[0.1,0.2,...]" */
+export function toVectorLiteral(v: number[]): string {
+  return `[${v.join(",")}]`;
 }

@@ -4,48 +4,30 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Navbar from "@/components/Navbar";
+import { api, ApiClientError, errorMessage, useAuth } from "@/lib/client/api";
+import type { UserDTO } from "@/types";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { setSignedIn } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"organizer" | "member">("organizer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError(null);
-
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        const user = { userId: Date.now(), name, email, role };
-        localStorage.setItem("tripsync_user", JSON.stringify(user));
-        localStorage.setItem("tripsync_token", "demo-token-custom");
-        router.push("/dashboard");
-        return;
-      }
-
-      const user = { ...data.data.user, role };
-      localStorage.setItem("tripsync_user", JSON.stringify(user));
-      localStorage.setItem("tripsync_token", data.data.token);
+      const data = await api<{ user: UserDTO }>("/api/auth/register", { method: "POST", body: { name, email, password } });
+      setSignedIn(data.user);
       router.push("/dashboard");
-    } catch {
-      const user = { userId: Date.now(), name, email, role };
-      localStorage.setItem("tripsync_user", JSON.stringify(user));
-      localStorage.setItem("tripsync_token", "demo-token-custom");
-      router.push("/dashboard");
-    } finally {
+    } catch (err) {
+      const msgs = err instanceof ApiClientError ? Object.values(err.fields) : [];
+      setError(msgs.length ? msgs.join(" · ") : errorMessage(err));
       setLoading(false);
     }
   };
@@ -62,7 +44,7 @@ export default function RegisterPage() {
           </div>
 
           {error && (
-            <div className="mb-4 p-2.5 border border-red-300 bg-red-50 text-red-800 text-xs font-medium">
+            <div role="alert" className="mb-4 p-2.5 border border-red-300 bg-red-50 text-red-800 text-xs font-medium">
               {error}
             </div>
           )}
@@ -76,6 +58,7 @@ export default function RegisterPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ronak Surana"
                 required
+                autoComplete="name"
                 className="input-sharp"
               />
             </div>
@@ -98,41 +81,19 @@ export default function RegisterPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
+                placeholder="At least 8 characters, letters and a number"
                 required
                 minLength={8}
+                maxLength={72}
+                autoComplete="new-password"
                 className="input-sharp"
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Default Travel Role</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRole("organizer")}
-                  className={`p-2 border text-xs text-left transition-colors ${
-                    role === "organizer"
-                      ? "bg-slate-950 text-white border-slate-950"
-                      : "bg-white border-slate-300 text-slate-700 hover:border-slate-500"
-                  }`}
-                >
-                  <div className="font-bold">Organizer</div>
-                  <div className="text-[10px] opacity-80 mt-0.5">Edit &amp; book schedules</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("member")}
-                  className={`p-2 border text-xs text-left transition-colors ${
-                    role === "member"
-                      ? "bg-slate-950 text-white border-slate-950"
-                      : "bg-white border-slate-300 text-slate-700 hover:border-slate-500"
-                  }`}
-                >
-                  <div className="font-bold">Traveler</div>
-                  <div className="text-[10px] opacity-80 mt-0.5">Suggest &amp; view</div>
-                </button>
-              </div>
+            <div className="p-3 border border-slate-200 bg-slate-50 text-[11px] text-slate-600 leading-relaxed">
+              <span className="font-semibold text-slate-800">Roles are set per trip.</span> You become the{" "}
+              <span className="font-semibold">Organizer</span> of every trip you create and can invite others as{" "}
+              <span className="font-semibold">Travelers</span> (can edit) or <span className="font-semibold">Viewers</span> (read-only).
             </div>
 
             <button

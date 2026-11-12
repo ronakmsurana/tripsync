@@ -32,38 +32,38 @@ export default function HomePage() {
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
-                href="/dashboard/1"
+                href="/register"
                 className="px-5 py-3 text-xs sm:text-sm font-bold bg-slate-950 hover:bg-slate-800 text-white border border-slate-950 rounded-none transition-colors shadow-sm flex items-center gap-2"
               >
-                <span>Launch Hampi Trip Demo</span>
+                <span>Plan Your First Trip</span>
                 <span>→</span>
               </Link>
 
               <Link
-                href="/dashboard"
+                href="/login"
                 className="px-5 py-3 text-xs sm:text-sm font-bold bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 rounded-none transition-colors shadow-sm"
               >
-                <span>All Trips</span>
+                <span>Sign In</span>
               </Link>
             </div>
 
             {/* Sharp Stats Bar */}
             <div className="mt-12 pt-8 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="p-3 border border-slate-200 bg-slate-50">
-                <div className="text-xl font-bold text-slate-950">100%</div>
-                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Automated Clash Detection</div>
+                <div className="text-xl font-bold text-slate-950">Buffers</div>
+                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Boarding &amp; check-out aware clashes</div>
               </div>
               <div className="p-3 border border-slate-200 bg-slate-50">
-                <div className="text-xl font-bold text-blue-600">&lt; 10ms</div>
-                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Timeline Sync Speed</div>
+                <div className="text-xl font-bold text-blue-600">Exact</div>
+                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Paise-accurate expense splits</div>
               </div>
               <div className="p-3 border border-slate-200 bg-slate-50">
-                <div className="text-xl font-bold text-slate-950">Real-Time</div>
-                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Group Expense Splits</div>
+                <div className="text-xl font-bold text-slate-950">3 Stores</div>
+                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Relational, document &amp; vector</div>
               </div>
               <div className="p-3 border border-slate-200 bg-slate-50">
-                <div className="text-xl font-bold text-emerald-600">Smart AI</div>
-                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Vibe &amp; Activity Search</div>
+                <div className="text-xl font-bold text-emerald-600">Semantic</div>
+                <div className="text-[11px] font-medium text-slate-500 mt-0.5">Activity search with pgvector</div>
               </div>
             </div>
           </div>
@@ -240,9 +240,6 @@ export default function HomePage() {
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="text-slate-600 hover:text-slate-950 transition-colors">
               Trips
-            </Link>
-            <Link href="/dashboard/1" className="text-slate-600 hover:text-slate-950 transition-colors">
-              Hampi Demo
             </Link>
             <Link href="/architecture" className="text-slate-400 hover:text-slate-600 transition-colors">
               Developer Architecture
